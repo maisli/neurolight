@@ -1,6 +1,9 @@
+import logging
 import numpy as np
 from gunpowder import *
 from scipy import ndimage
+
+logger = logging.getLogger(__name__)
 
 
 class FusionAugment(BatchFilter):
@@ -58,10 +61,14 @@ class FusionAugment(BatchFilter):
         self.blend_smoothness = blend_smoothness
         self.num_blended_objects = num_blended_objects
 
+        self.dims = None
+
         assert self.blend_mode in ['intensity', 'labels_mask'], (
                 "Unknown blend mode %s." % self.blend_mode)
 
     def setup(self):
+
+        self.dims = self.spec.get_total_roi().dims()
 
         self.provides(self.raw_fused, self.spec[self.raw_base].copy())
         self.provides(self.labels_fused, self.spec[self.labels_base].copy())
@@ -88,46 +95,90 @@ class FusionAugment(BatchFilter):
         labels_add_array = batch[self.labels_add].data
         labels_add_spec = batch[self.labels_add].spec.copy()
 
+        logger.debug("Processing base volume with raw shape {0} and gt shape {1}.".format(
+            raw_fused_array.shape, labels_fused_array.shape))
+        logger.debug("Processing add volume with raw shape {0} and gt shape {1}.".format(
+            raw_add_array.shape, labels_add_array.shape))
+
         # fuse labels, create labels_mask of "add" volume
         labels = np.unique(labels_add_array)
         if 0 in labels:
             labels = np.delete(labels, 0)
 
+        logger.debug("Found {0} labels in add volume.".format(len(labels)))
+
         if 0 < self.num_blended_objects < len(labels):
             labels = np.random.choice(labels, self.num_blended_objects)
 
+        logger.debug("{0} will be fused with base volume.".format(len(labels)))
+
         labels_fused_array = self._relabel(labels_fused_array.astype(np.int32))
-        labels_fused_mask = labels_fused_array > 0
-        mask = np.zeros_like(labels_fused_array, dtype=bool)
+
+        # check if label array has multiple channel
+        if labels_fused_array.ndim > self.dims:
+            labels_fused_mask = np.max(labels_fused_array > 0, axis=0)
+        else:
+            labels_fused_mask = labels_fused_array > 0
+
+        mask = np.zeros_like(labels_fused_mask, dtype=bool)
         cnt = np.max(labels_fused_array) + 1
 
+        # todo: position object randomly or with specified overlap/distance
+
         for label in labels:
-            label_mask = labels_add_array == label
-            overlap = np.logical_and(labels_fused_mask, label_mask)
-            mask[label_mask] = True
-            labels_fused_array[label_mask] = cnt    # todo: position object randomly or with specified overlap/distance
-            labels_fused_array[overlap] = 0     # set label 0 for overlapping neurons
-            cnt += 1
 
-        # fuse raw
-        if self.blend_mode == 'intensity':
+            if labels_fused_array.ndim > self.dims:
 
-            add_mask = raw_add_array.astype(np.float32) / np.max(raw_add_array)
-            raw_fused_array = add_mask * raw_add_array + (1 - add_mask) * raw_fused_array
+                # insert label
+                mask = labels_add_array == label
+                mask = mask[np.unravel_index(np.argmax(mask), labels_add_array.shape)[0]]
 
-        elif self.blend_mode == 'labels_mask':
+                logger.debug("Inserting label {0} with {1} voxel.".format(cnt, np.sum(mask)))
+                labels_fused_array = np.concatenate(
+                    [labels_fused_array, np.reshape(mask.astype(np.int32), (1,) + mask.shape)],
+                    axis=0)
+                labels_fused_array[-1][mask] = cnt
+                cnt += 1
 
-            # create soft mask
-            soft_mask = np.zeros_like(mask, dtype='float32')
-            ndimage.gaussian_filter(mask.astype('float32'), sigma=self.blend_smoothness, output=soft_mask,
-                                    mode='nearest')
-            soft_mask /= np.max(soft_mask)
-            soft_mask = np.clip((soft_mask * 2), 0, 1)
+                # insert neuron into raw
+                soft_mask = self._get_soft_mask(mask)
 
-            raw_fused_array = soft_mask * raw_add_array + (1 - soft_mask) * raw_fused_array
+                # get channel in which neuron is most likely expressed using signal-to-noise ratio
+                mask_surrounding = np.logical_xor(mask, ndimage.binary_dilation(mask, iterations=6))
 
-        else:
-            raise NotImplementedError("Unknown blend mode %s." % self.blend_mode)
+                snr = [np.mean(raw_add_array[c][mask]) / np.std(raw_add_array[c][mask_surrounding])
+                       for c in range(raw_add_array.shape[0])]
+
+                fg_channel = np.argmax(snr)
+                logger.debug("Picking channel {0} out of {1} as foreground channel.".format(fg_channel, snr))
+                random_channel = np.random.randint(0, 3)
+                raw_fused_array[random_channel] = soft_mask * raw_add_array[fg_channel] \
+                                                  + (1 - soft_mask) * raw_fused_array[random_channel]
+
+            else:
+
+                label_mask = labels_add_array == label
+                overlap = np.logical_and(labels_fused_mask, label_mask)
+                mask[label_mask] = True
+                labels_fused_array[label_mask] = cnt
+                labels_fused_array[overlap] = 0
+                cnt += 1
+
+        if labels_fused_array.ndim <= self.dims:
+
+            # fuse raw
+            if self.blend_mode == 'intensity':
+
+                add_mask = raw_add_array.astype(np.float32) / np.max(raw_add_array)
+                raw_fused_array = add_mask * raw_add_array + (1 - add_mask) * raw_fused_array
+
+            elif self.blend_mode == 'labels_mask':
+
+                soft_mask = self._get_soft_mask(mask)
+                raw_fused_array = soft_mask * raw_add_array + (1 - soft_mask) * raw_fused_array
+
+            else:
+                raise NotImplementedError("Unknown blend mode %s." % self.blend_mode)
 
         # return raw and labels for "fused" volume
         batch.arrays[self.raw_fused] = Array(data=raw_fused_array.astype(raw_fused_spec.dtype), spec=raw_fused_spec)
@@ -149,3 +200,14 @@ class FusionAugment(BatchFilter):
         values_map[old_values] = new_values
 
         return values_map[a]
+
+    def _get_soft_mask(self, mask):
+
+        # create soft mask
+        soft_mask = np.zeros_like(mask, dtype=np.float32)
+        ndimage.gaussian_filter(mask.astype(np.float32), sigma=self.blend_smoothness, output=soft_mask,
+                                mode='nearest')
+        soft_mask /= np.max(soft_mask)
+        soft_mask = np.clip((soft_mask * 2), 0, 1)
+
+        return soft_mask
