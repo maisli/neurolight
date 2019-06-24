@@ -12,5 +12,6 @@ setup(
         packages=[
             'neurolight',
             'neurolight.gunpowder',
+            'neurolight.evaluation',
         ]
 )
