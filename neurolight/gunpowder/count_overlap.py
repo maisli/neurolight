@@ -22,6 +22,12 @@ class CountOverlap(BatchFilter):
         spec = self.spec[self.gt].copy()
         self.provides(self.gt_overlap, spec)
 
+    def prepare(self, request):
+
+        if self.gt not in request:
+            request[self.gt] = request[self.gt_overlap].copy()
+            request[self.gt].dtype = self.spec[self.gt].dtype
+
     def process(self, batch, request):
 
         spec = batch[self.gt].spec.copy()
@@ -41,8 +47,11 @@ class CountOverlap(BatchFilter):
 
         spec.dtype = np.int32
 
-        batch[self.gt_overlap] = Array(data=overlap.astype(np.int32),
-                                       spec=spec)
+        masked = Array(data=overlap.astype(np.int32), spec=spec)
+        masked = masked.crop(request[self.gt_overlap].roi)
+
+        batch[self.gt_overlap] = masked
+
 
 class MaskOverlap(BatchFilter):
 
