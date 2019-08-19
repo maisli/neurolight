@@ -2,8 +2,25 @@ import logging
 import numpy as np
 from gunpowder import *
 from scipy import ndimage
+from skimage import io
 
 logger = logging.getLogger(__name__)
+
+
+def get_soft_mask(mask, blend_smoothnes, base_mask=None):
+
+    # create soft mask
+    soft_mask = np.zeros_like(mask, dtype=np.float32)
+    ndimage.gaussian_filter(mask.astype(np.float32), sigma=blend_smoothnes,
+                            output=soft_mask, mode='nearest')
+    soft_mask /= np.max(soft_mask)
+    soft_mask = np.clip((soft_mask * 2), 0, 1)
+
+    if base_mask is not None:
+        overlap = np.logical_and(mask, base_mask)
+        soft_mask[overlap] = 0.5
+
+    return soft_mask
 
 
 class FusionAugment(BatchFilter):
@@ -108,7 +125,8 @@ class FusionAugment(BatchFilter):
         logger.debug("Found {0} labels in add volume.".format(len(labels)))
 
         if 0 < self.num_blended_objects < len(labels):
-            labels = np.random.choice(labels, self.num_blended_objects)
+            labels = np.random.choice(labels, self.num_blended_objects,
+                                      replace=False)
 
         logger.debug("{0} will be fused with base volume.".format(len(labels)))
 
@@ -124,7 +142,6 @@ class FusionAugment(BatchFilter):
         cnt = np.max(labels_fused_array) + 1
 
         # todo: position object randomly or with specified overlap/distance
-
         for label in labels:
 
             if labels_fused_array.ndim > self.dims:
@@ -141,7 +158,7 @@ class FusionAugment(BatchFilter):
                 cnt += 1
 
                 # insert neuron into raw
-                soft_mask = self._get_soft_mask(mask)
+                soft_mask = get_soft_mask(mask, self.blend_smoothness)
 
                 # get channel in which neuron is most likely expressed using signal-to-noise ratio
                 mask_surrounding = np.logical_xor(mask, ndimage.binary_dilation(mask, iterations=6))
@@ -201,13 +218,131 @@ class FusionAugment(BatchFilter):
 
         return values_map[a]
 
-    def _get_soft_mask(self, mask):
 
-        # create soft mask
-        soft_mask = np.zeros_like(mask, dtype=np.float32)
-        ndimage.gaussian_filter(mask.astype(np.float32), sigma=self.blend_smoothness, output=soft_mask,
-                                mode='nearest')
-        soft_mask /= np.max(soft_mask)
-        soft_mask = np.clip((soft_mask * 2), 0, 1)
+class FusionAugmentWithSameSource(BatchFilter):
 
-        return soft_mask
+    def __init__(self, raw, labels, blend_mode='labels_mask',
+                 blend_smoothness=3, num_blended_objects=0):
+        self.raw = raw
+        self.labels = labels
+        self.blend_mode = blend_mode
+        self.blend_smoothness = blend_smoothness
+        self.num_blended_objects = num_blended_objects
+        self.dims = None
+        self.raw_roi = None
+        self.labels_roi = None
+
+        assert self.blend_mode in ['intensity', 'labels_mask'], (
+            "Unknown blend mode %s." % self.blend_mode)
+
+    def setup(self):
+        self.dims = self.spec.get_total_roi().dims()
+
+    def prepare(self, request):
+        # save original request specs
+        self.labels_roi = request[self.labels].roi.copy()
+        self.raw_roi = request[self.raw].roi.copy()
+
+        # enlarge labels' roi to have same size as raw
+        request[self.labels].roi = request[self.raw].roi.copy()
+
+    def process(self, batch, request):
+
+        raw_spec = self.spec[self.raw].copy()
+        raw_spec.roi = request[self.raw].roi.copy()
+
+        raw = batch[self.raw].data
+        labels = batch[self.labels].data
+        labels_spec = batch[self.labels].spec
+
+        # check number of channels for raw and labels
+        assert (len(raw.shape) - self.dims) <= 1 and \
+               (len(labels.shape) - self.dims) <= 1,\
+            "Don't know what to do with more than one channel dimension."
+
+        request[self.labels].roi = request[self.raw].roi.copy()
+        batch_to_fuse = self.get_upstream_provider().request_batch(request)
+        raw_to_fuse = batch_to_fuse[self.raw].data
+        labels_to_fuse = batch_to_fuse[self.labels].data
+
+        # save images:
+        #i = np.random.randint(0,1000)
+        #base = '/home/maisl/workspace/ppp/wormbodies/FusionAugment'
+        #suffix = '_%i_%i.png' % (self.blend_smoothness, i)
+        #io.imsave(base + '/raw_base' + suffix, (raw[1] * 255).astype(np.uint8))
+        #io.imsave(base + '/labels_base' + suffix,
+        #          (np.max(labels, axis=0) * 255).astype(np.uint8))
+        #io.imsave(base + '/raw_add' + suffix, (raw_to_fuse[1] * 255).astype(
+        # np.uint8))
+        #io.imsave(base + '/labels_add' + suffix,
+        #          (np.max(labels_to_fuse, axis=0) * 255).astype(np.uint8))
+
+        # fuse labels
+        # instances can be labeled either by different ids in one channel or
+        # one instance per channel with different ids or binary
+        if (labels.ndim - self.dims) > 0:
+            base_mask = ndimage.binary_erosion(np.max(labels, axis=0) > 0,
+                                               iterations=2)
+            labels_to_fuse = np.delete(
+                labels_to_fuse,
+                np.where(
+                    np.max(labels_to_fuse,
+                           axis=tuple(range(1, labels_to_fuse.ndim))) == 0),
+                axis=0)
+            num_instances = labels_to_fuse.shape[0]
+            if num_instances > 1:
+                if 0 < self.num_blended_objects < num_instances:
+                    instances_to_fuse = np.random.choice(range(num_instances),
+                                      self.num_blended_objects, replace=False)
+                elif self.num_blended_objects == -1:
+                    instances_to_fuse = np.random.choice(
+                        range(num_instances),
+                        np.random.randint(1, num_instances),
+                        replace=False
+                    )
+                else:
+                    instances_to_fuse = range(num_instances)
+            else:
+                instances_to_fuse = range(num_instances)
+            # fuse labels
+            labels = np.concatenate((labels, labels_to_fuse[
+                instances_to_fuse]), axis=0)
+            # fuse raw
+            # todo: flag for inserting in only one channel
+            #for instance in instances_to_fuse:
+            instance_mask = ndimage.binary_erosion(
+                np.max(labels_to_fuse[instances_to_fuse] > 0, axis=0),
+                iterations=2
+            )
+            soft_mask = get_soft_mask(
+                instance_mask,
+                self.blend_smoothness,
+                base_mask
+            )
+
+            if (raw.ndim - self.dims) > 0:
+                # replicate soft mask to meet number of channel
+                soft_mask = np.stack([soft_mask]*raw.shape[0], axis=0)
+                raw = soft_mask * raw_to_fuse + (1 - soft_mask) * raw
+            else:
+                raise NotImplementedError
+        else:
+            raise NotImplementedError
+
+        #io.imsave(base + '/raw_fused' + suffix, (raw[1] * 255).astype(
+        # np.uint8))
+        #io.imsave(base + '/labels_fused' + suffix,
+        #          (np.max(labels, axis=0) * 255).astype(np.uint8))
+
+        # return raw and labels of "fused" volume
+        batch.arrays[self.raw] = Array(
+            data=raw.astype(raw.dtype),
+            spec=raw_spec)
+        batch.arrays[self.labels] = Array(
+            data=labels.astype(labels.dtype),
+            spec=labels_spec).crop(self.labels_roi)
+
+        return batch
+
+
+
