@@ -8,3 +8,5 @@ from .binarize_labels import BinarizeLabels
 from .base import Clip, Convert, Threshold
 from .remove_overlap import RemoveOverlap
 from .count_overlap import CountOverlap, MaskOverlap, MaskCloseDistanceToOverlap
+from .downsample import MaxPool
+from .add_affinities import AddAffinities
