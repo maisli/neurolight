@@ -10,3 +10,5 @@ from .remove_overlap import RemoveOverlap
 from .count_overlap import CountOverlap, MaskOverlap, MaskCloseDistanceToOverlap
 from .downsample import MaxPool
 from .add_affinities import AddAffinities
+from .balance_labels import BalanceLabels
+from .convert_mask_to_points import ConvertMaskToPoints
