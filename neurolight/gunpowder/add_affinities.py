@@ -65,9 +65,9 @@ def seg_to_affgraph_2d_multi(seg, nhood):
         offset = seg[:, slice_offset_y, slice_offset_x]
         t1 = center == offset
         overlap = np.sum(center, axis=0) > 1
-        #check_for_overlap = np.sum(overlap) > 1
-        #if check_for_overlap:
-        all_same = np.all(t1, axis=0)
+        check_for_overlap = np.sum(overlap) > 1
+        if check_for_overlap:
+            all_same = np.all(t1, axis=0)
         t1[center == 0] = False
         partial_same = np.any(t1, axis=0)
 
@@ -77,9 +77,9 @@ def seg_to_affgraph_2d_multi(seg, nhood):
         t3 = np.any(offset, axis=0)
 
         aff[e, slice_center_y, slice_center_x] = partial_same * t2 * t3
-        #if check_for_overlap:
-        aff[e, slice_center_y, slice_center_x][overlap] = \
-            all_same[overlap] * t2[overlap] * t3[overlap]
+        if check_for_overlap:
+            aff[e, slice_center_y, slice_center_x][overlap] = \
+                all_same[overlap] * t2[overlap] * t3[overlap]
 
     return aff
 

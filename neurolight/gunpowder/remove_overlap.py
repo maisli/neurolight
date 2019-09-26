@@ -4,10 +4,11 @@ from gunpowder import *
 
 class RemoveOverlap(BatchFilter):
 
-    def __init__(self, gt, gt_cleaned):
+    def __init__(self, gt, gt_cleaned, overlap='remove'):
 
         self.gt = gt
         self.gt_cleaned = gt_cleaned
+        self.overlap = overlap
         self.dims = None
         self.gt_spec = None
         self.grow = None
@@ -38,13 +39,13 @@ class RemoveOverlap(BatchFilter):
         assert num_channels <= 1, \
             "Sorry, don't know what to do with more than one channel dimension."
 
-        cleaned = np.sum(array, axis=0)
-        overlap = np.sum((array > 0).astype(np.uint16), axis=0)
-        cleaned[overlap > 1] = 0
+        cleaned = np.max(array, axis=0)
+        if self.overlap == 'remove':
+            overlap = np.sum((array > 0).astype(np.uint16), axis=0)
+            cleaned[overlap > 1] = 0
 
         batch[self.gt_cleaned] = Array(data=cleaned.astype(np.uint16),
                                        spec=spec)
-
         gt = Array(data=batch[self.gt].data.copy(), spec=spec.copy())
 
         gt = gt.crop(gt_spec.roi)
