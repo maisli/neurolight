@@ -39,7 +39,7 @@ class CountOverlap(BatchFilter):
 
         overlap = np.sum((array > 0).astype('uint16'), axis=0)
         if np.sum(overlap > 1) > 0:
-            logger.info('%i Overlapping pixel with labels %s',
+            logger.debug('%i Overlapping pixel with labels %s',
                         np.sum(overlap > 1), np.unique(overlap))
 
         if self.maxnuminst is not None:
