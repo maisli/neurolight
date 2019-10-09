@@ -14,3 +14,4 @@ from .add_affinities import AddAffinities
 from .balance_labels import BalanceLabels, BalanceLabelsGlobally
 from .convert_mask_to_points import ConvertMaskToPoints
 from .fusion_augment_preprocessed import FusionAugmentPreprocessed
+from .encode_affinities import EncodeAffinities
