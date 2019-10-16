@@ -11,6 +11,7 @@ from .remove_overlap import RemoveOverlap
 from .count_overlap import CountOverlap, MaskOverlap, MaskCloseDistanceToOverlap
 #from .downsample import MaxPool
 from .add_affinities import AddAffinities
+from .add_dense_affinities_for_single_point import AddDenseAffinitiesForSinglePoint
 from .balance_labels import BalanceLabels, BalanceLabelsGlobally
 from .convert_mask_to_points import ConvertMaskToPoints
 from .fusion_augment_preprocessed import FusionAugmentPreprocessed
