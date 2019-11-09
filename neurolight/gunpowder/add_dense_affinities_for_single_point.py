@@ -42,7 +42,8 @@ def seg_to_aff_3d(seg):
     aff = np.zeros(tuple([np.prod(shape)]) + tuple(shape), dtype=np.int32)
 
     if seg[z, y, x] != 0:
-        aff = np.reshape((seg == seg[z, y, x]), tuple([np.prod(shape)]))
+        aff[:, z, y, x] = np.reshape((seg == seg[z, y, x]), tuple([np.prod(
+            shape)]))
 
     return aff
 
@@ -50,15 +51,15 @@ def seg_to_aff_3d(seg):
 def seg_to_aff_3d_multi(seg):
     # heads up: assuming channels_first and one instance per channel!
     # for overlap regions: the first instance is chosen
-    shape = seg.shape[1:]
+    shape = np.array(seg.shape[1:])
     z, y, x = np.array(shape // 2)
-    aff = np.zeros((np.prod(shape)) + shape, dtype=np.int32)
+    aff = np.zeros(tuple([np.prod(shape)]) + tuple(shape), dtype=np.int32)
     c = int(np.argmax(seg[:, z, y, x] > 0))
 
     if seg[c, z, y, x] != 0:
-        aff = np.reshape(
-            (arr[c] == seg[c, z, y, x]),
-            tuple(np.prod(shape))
+        aff[:, z, y, x] = np.reshape(
+            (seg[c] == seg[c, z, y, x]),
+            tuple([np.prod(shape)])
         )
 
     return aff
