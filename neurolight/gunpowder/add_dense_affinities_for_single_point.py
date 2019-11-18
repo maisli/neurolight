@@ -8,6 +8,17 @@ from gunpowder.array import Array
 logger = logging.getLogger(__name__)
 
 
+def seg_to_aff_2d_cs(seg):
+    shape = np.array(seg.shape)
+    y, x = np.array(shape // 2)
+    aff = np.zeros(tuple([np.prod(shape)]) + tuple(shape), dtype=np.int32)
+
+    if seg[y, x] > 255:
+        aff[:, y, x] = np.reshape((seg == seg[y, x]), tuple([np.prod(shape)]))
+
+    return aff
+
+
 def seg_to_aff_2d(seg):
     shape = np.array(seg.shape)
     y, x = np.array(shape // 2)
@@ -114,6 +125,7 @@ class AddDenseAffinitiesForSinglePoint(BatchFilter):
         multiple_labels=False,
         labels_mask=None,
         unlabelled=None,
+        cityscape=False,
         affinities_mask=None):
 
         self.affinity_neighborhood = np.array(affinity_neighborhood)
@@ -123,6 +135,7 @@ class AddDenseAffinitiesForSinglePoint(BatchFilter):
         self.labels_mask = labels_mask
         self.affinities = affinities
         self.affinities_mask = affinities_mask
+        self.cityscape = cityscape
 
     def setup(self):
 
@@ -208,7 +221,9 @@ class AddDenseAffinitiesForSinglePoint(BatchFilter):
         arr = batch.arrays[self.labels].data.astype(np.int32)
         if arr.shape[0] == 1:
             arr.shape = arr.shape[1:]
-        if self.multiple_labels and len(arr.shape) == 3:
+        if self.cityscape:
+            seg_to_affgraph_fun = seg_to_aff_2d_cs
+        elif self.multiple_labels and len(arr.shape) == 3:
             seg_to_affgraph_fun = seg_to_aff_2d_multi
         elif len(arr.shape) == 2:
             seg_to_affgraph_fun = seg_to_aff_2d
