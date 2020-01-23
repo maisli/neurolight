@@ -78,9 +78,15 @@ class EncodeAffinities(BatchFilter):
 
         data = batch.arrays[self.affinities].data
         input_shape = data.shape[1:]
-        data = np.transpose(data, [1, 2, 0])
-        data = np.reshape(data, [data.shape[0]*data.shape[1],
-                                 data.shape[2], 1, 1])
+        if len(input_shape) == 2:
+            data = np.transpose(data, [1, 2, 0])
+            data = np.reshape(data, [data.shape[0]*data.shape[1],
+                                     data.shape[2], 1, 1])
+        else:
+            data = np.transpose(data, [1, 2, 3, 0])
+            data = np.reshape(data, [data.shape[0] * data.shape[1] *
+                                     data.shape[2],
+                                     data.shape[3], 1, 1])
         sz = data.shape[0]
         cnt = int(np.ceil(sz/1024))
         slices = np.array_split(data, [x*1024 for x in range(1, cnt)])
@@ -92,7 +98,7 @@ class EncodeAffinities(BatchFilter):
         spec = self.spec[self.code].copy()
         spec.roi = request[self.code].roi
         code = np.concatenate(codes)
-        code = np.transpose(code, [1, 0])
+        code = np.transpose(np.squeeze(code), [1, 0])
         code = np.reshape(code, [-1] + list(input_shape))
 
         batch.arrays[self.code] = Array(code, spec)

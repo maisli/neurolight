@@ -77,9 +77,9 @@ def seg_to_affgraph_2d_multi(seg, nhood):
         t3 = np.any(offset, axis=0)
 
         aff[e, slice_center_y, slice_center_x] = partial_same * t2 * t3
-        if check_for_overlap:
-            aff[e, slice_center_y, slice_center_x][overlap] = \
-                all_same[overlap] * t2[overlap] * t3[overlap]
+        #if check_for_overlap:
+        #    aff[e, slice_center_y, slice_center_x][overlap] = \
+        #        all_same[overlap] * t2[overlap] * t3[overlap]
 
     return aff
 
@@ -124,9 +124,10 @@ def seg_to_affgraph_3d_multi(seg, nhood):
         # second pixel fg?
         t3 = np.any(offset, axis=0)
 
-        aff[e, slice_center_y, slice_center_x] = partial_same * t2 * t3
-        aff[e, slice_center_y, slice_center_x][overlap] = \
-            all_same[overlap] * t2[overlap] * t3[overlap]
+        aff[e, slice_center_z, slice_center_y, slice_center_x] = \
+            partial_same * t2 * t3
+        # aff[e, slice_center_y, slice_center_x][overlap] = \
+        #     all_same[overlap] * t2[overlap] * t3[overlap]
 
     return aff
 
@@ -302,8 +303,9 @@ class AddAffinities(BatchFilter):
 
         logger.debug("computing ground-truth affinities from labels")
         arr = batch.arrays[self.labels].data.astype(np.int32)
-        if arr.shape[0] == 1:
-            arr.shape = arr.shape[1:]
+        # check: why was check necessary?
+        #if arr.shape[0] == 1:
+        #    arr.shape = arr.shape[1:]
         if self.multiple_labels and len(arr.shape) == 3:
             seg_to_affgraph_fun = seg_to_affgraph_2d_multi
         elif len(arr.shape) == 2:

@@ -33,12 +33,12 @@ class FusionAugmentPreprocessed(BatchFilter):
 
     def process(self, batch, request):
 
-        if np.random.uniform(0, 1) > self.apply_probability:
-            logger.info("Skipping fusion augment this time")
-            return
-
         if np.sum(batch[self.labels].data > 0) == 0:
             logger.info("Skipping fusion augment as batch is background batch")
+            return
+
+        if np.random.uniform(0, 1) >= self.apply_probability:
+            logger.info("Skipping fusion augment this time")
             return
 
         raw = batch[self.raw].data

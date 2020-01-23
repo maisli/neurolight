@@ -4,6 +4,7 @@ import collections
 import itertools
 import logging
 import numpy as np
+from skimage.morphology import skeletonize_3d
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,39 @@ class BalanceLabelsGlobally(BatchFilter):
         if np.max(scales) > 0:
             scales = scales * self.factors[0]
             scales[labels.data > 0] = self.factors[1]
+
+        spec = self.spec[self.scales].copy()
+        spec.roi = labels.spec.roi
+        batch.arrays[self.scales] = Array(scales, spec)
+
+
+class BalanceSkeleton(BatchFilter):
+
+    def __init__(self, labels, scales, factors):
+        self.labels = labels
+        self.scales = scales
+        self.factors = factors
+
+    def setup(self):
+        assert self.labels in self.spec, (
+            "Asked to balance labels %s, which are not provided." % self.labels)
+        spec = self.spec[self.labels].copy()
+        spec.dtype = np.float32
+        self.provides(self.scales, spec)
+        self.enable_autoskip()
+
+    def process(self, batch, request):
+
+        labels = batch.arrays[self.labels]
+        scales = np.ones(labels.data.shape, dtype=np.float32)
+        classes = np.unique(labels.data)
+
+        # heads up: skeleton only for all foreground classes
+        if np.max(classes) > 0:
+            foreground = labels.data > 0
+            skeleton = skeletonize_3d(foreground) > 0
+            scales = scales * self.factors[0]
+            scales[skeleton] = self.factors[1]
 
         spec = self.spec[self.scales].copy()
         spec.roi = labels.spec.roi
@@ -189,3 +223,4 @@ class BalanceLabels(BatchFilter):
 
         # scale the masked-in scale with the class weights
         scale *= np.take(w, labels)
+
