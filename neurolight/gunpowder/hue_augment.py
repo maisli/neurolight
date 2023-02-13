@@ -17,6 +17,7 @@ class RandomHue(gp.BatchFilter):
     def process(self, batch, request):
         if np.random.rand() < self.prob:
             array = batch.arrays[self.array]
+            dtype = array.data.dtype
             array.data = np.clip(array.data, 0.0, 1.0)
             
             # transform rgb to hsv color space and add random color shift to hue value
@@ -28,5 +29,5 @@ class RandomHue(gp.BatchFilter):
             # transform back to rgb space
             r, g, b = self.hsv_to_rgb(h, s, v)
             array.data = np.array([r, g, b])
-            array.data = np.clip(array.data, 0.0, 1.0)
+            array.data = np.clip(array.data, 0.0, 1.0).astype(dtype)
 

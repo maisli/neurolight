@@ -44,10 +44,11 @@ class CountOverlap(BatchFilter):
 
         if self.maxnuminst is not None:
             overlap = np.clip(overlap, 0, self.maxnuminst)
+        
+        request_dtype = request[self.gt_overlap].dtype
+        spec.dtype = request_dtype
 
-        spec.dtype = np.int32
-
-        masked = Array(data=overlap.astype(np.int32), spec=spec)
+        masked = Array(data=overlap.astype(request_dtype), spec=spec)
         masked = masked.crop(request[self.gt_overlap].roi)
 
         batch[self.gt_overlap] = masked
@@ -129,19 +130,22 @@ class MaskCloseDistanceToOverlap(BatchFilter):
         num_channels = len(array.shape) - self.dims
         assert num_channels <= 1, \
             "Sorry, don't know what to do with more than one channel dimension."
+        
+        if array.shape[0] == 1:
+            mask = np.zeros(array.shape[1:], dtype=np.uint8)
+        else:
+            dst = np.ones(np.max(array, axis=0).shape, dtype=np.float32) * 10000
+            # assume one mask in one channel slice
+            for c in range(array.shape[0]):
+                label_mask = array[c] > 0
+                other_label_mask = np.max(np.delete(array, c, axis=0), axis=0) > 0
+                dist = ndimage.distance_transform_edt(
+                    np.logical_not(other_label_mask)
+                )
+                dst[label_mask] = np.minimum(dst[label_mask], dist[label_mask])
 
-        dst = np.ones(np.max(array, axis=0).shape, dtype=np.float32) * 10000
-        # assume one mask in one channel slice
-        for c in range(array.shape[0]):
-            label_mask = array[c] > 0
-            other_label_mask = np.max(np.delete(array, c, axis=0), axis=0) > 0
-            dist = ndimage.distance_transform_edt(
-                np.logical_not(other_label_mask)
-            )
-            dst[label_mask] = np.minimum(dst[label_mask], dist[label_mask])
-
-        mask = np.logical_and(dst >= self.min_distance, dst <
-                              self.max_distance).astype(np.uint8)
+            mask = np.logical_and(dst >= self.min_distance, dst <
+                                  self.max_distance).astype(np.uint8)
 
         if np.sum(mask) == 0:
             logger.info('WARNING: No overlapping pixel!')

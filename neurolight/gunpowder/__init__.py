@@ -15,7 +15,7 @@ from .balance_labels import BalanceLabels, BalanceLabelsGlobally, \
     BalanceSkeleton
 from .convert_mask_to_points import ConvertMaskToPoints
 from .fusion_augment_preprocessed import FusionAugmentPreprocessed
-from .encode_affinities import EncodeAffinities
+#from .encode_affinities import EncodeAffinities
 from .permute_channel import PermuteChannel
 from .overlay_augment import OverlayAugment
 from .hue_augment import RandomHue
