@@ -7,8 +7,9 @@ logger = logging.getLogger(__name__)
 
 class PermuteChannel(BatchFilter):
 
-    def __init__(self, raw):
+    def __init__(self, raw, prob):
         self.raw = raw
+        self.prob = prob
         self.dims = None
 
     def setup(self):
@@ -18,11 +19,12 @@ class PermuteChannel(BatchFilter):
         pass
 
     def process(self, batch, request):
-        raw = batch[self.raw].data
-        assert raw.ndim == self.dims + 1, \
-            "Sorry, only one channel dim can be permuted!"
+        if np.random.rand() < self.prob:
+            raw = batch[self.raw].data
+            assert raw.ndim == self.dims + 1, \
+                "Sorry, only one channel dim can be permuted!"
 
-        # heads up: assuming channels first
-        raw = np.random.permutation(raw)
-        batch[self.raw].data = raw.copy()
+            # heads up: assuming channels first
+            raw = np.random.permutation(raw)
+            batch[self.raw].data = raw.copy()
 
