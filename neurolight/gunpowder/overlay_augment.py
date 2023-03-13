@@ -52,7 +52,6 @@ class OverlayAugment(BatchFilter):
             # simply add both volumes together
             overlayed_raw = raw + to_overlay_raw
             overlayed_raw = np.clip(overlayed_raw, 0.0, 1.0)
-            overlayed_raw /= float(min(np.max(overlayed_raw), 1.0))
 
             to_overlay_instances[to_overlay_instances > 0] += np.max(instances)
             overlayed_instances = np.concatenate([instances, to_overlay_instances])
