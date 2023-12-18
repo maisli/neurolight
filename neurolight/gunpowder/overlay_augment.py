@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class OverlayAugment(BatchFilter):
 
     def __init__(
-            self, raw, instances, apply_probability=1.,
+            self, raw, instances=None, apply_probability=1.,
             overlay_background=False, numinst=None, max_numinst=2,
             loss_mask=None):
         self.raw = raw
@@ -31,7 +31,12 @@ class OverlayAugment(BatchFilter):
 
     def process(self, batch, request):
         if not self.overlay_background:
-            if not np.any(batch[self.instances].data > 0):
+            if (
+                    (self.instances is not None and
+                     not np.any(batch[self.instances].data > 0)) or
+                    (self.numinst is not None and
+                     not np.any(batch[self.numinst].data > 0))
+            ):
                 logger.info("Skipping overlay augment as batch is background batch")
                 return
 
@@ -39,27 +44,29 @@ class OverlayAugment(BatchFilter):
             request._random_seed = int(time.time() * 1e6) % (2**32)
             # get current volume data
             raw = batch[self.raw].data
-            instances = batch[self.instances].data
-            if self.numinst:
+            if self.instances is not None:
+                instances = batch[self.instances].data
+            if self.numinst is not None:
                 numinst = batch[self.numinst].data
 
             # get second volume to overlay with
             to_overlay = self.get_upstream_provider().request_batch(request)
 
             to_overlay_raw = to_overlay[self.raw].data
-            to_overlay_instances = to_overlay[self.instances].data
 
             # simply add both volumes together
             overlayed_raw = raw + to_overlay_raw
             overlayed_raw = np.clip(overlayed_raw, 0.0, 1.0)
 
-            to_overlay_instances[to_overlay_instances > 0] += np.max(instances)
-            overlayed_instances = np.concatenate([instances, to_overlay_instances])
-
             batch[self.raw].data = overlayed_raw
-            batch[self.instances].data = overlayed_instances
 
-            if self.numinst:
+            if self.instances is not None:
+                to_overlay_instances = to_overlay[self.instances].data
+                to_overlay_instances[to_overlay_instances > 0] += np.max(instances)
+                overlayed_instances = np.concatenate([instances, to_overlay_instances])
+                batch[self.instances].data = overlayed_instances
+
+            if self.numinst is not None:
                 to_overlay_numinst = to_overlay[self.numinst].data
                 overlayed_numinst = np.clip(
                         numinst + to_overlay_numinst, 0, self.max_numinst)
