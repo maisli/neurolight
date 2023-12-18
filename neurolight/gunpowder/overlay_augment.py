@@ -36,7 +36,7 @@ class OverlayAugment(BatchFilter):
                 return
 
         if random.random() < self.apply_probability:
-            request._random_seed = int(time.time() * 1e6)
+            request._random_seed = int(time.time() * 1e6) % (2**32)
             # get current volume data
             raw = batch[self.raw].data
             instances = batch[self.instances].data
